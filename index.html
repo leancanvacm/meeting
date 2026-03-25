@@ -3209,17 +3209,43 @@
                    date1.getDate() === date2.getDate();
         }
 
-        // เพิ่มฟังก์ชันสำหรับตรวจสอบ URL parameter และเปิดรายละเอียดการจองโดยตรง
+        // ========== ENHANCED URL BOOKING POPUP ==========
+        // This function checks for bookingId in URL and opens the detail modal
+        // It now waits for LIFF to be ready and retries if necessary
         function checkUrlForBookingId() {
             const urlParams = new URLSearchParams(window.location.search);
             const bookingId = urlParams.get('bookingId');
-            const view = urlParams.get('view');
             
-            if (bookingId && view === 'calendar') {
-                setTimeout(() => {
-                    showBookingDetail(bookingId);
-                }, 1500);
+            if (!bookingId) {
+                console.log('No bookingId found in URL');
+                return;
             }
+            
+            console.log('Found bookingId in URL:', bookingId);
+            
+            // Function to attempt showing the booking detail
+            const attemptShowDetail = (attempt = 0) => {
+                // Wait for state.user to be loaded and LIFF initialized
+                if (state.user && state.initialized && typeof showBookingDetail === 'function') {
+                    console.log('LIFF ready, showing booking detail for:', bookingId);
+                    // Small delay to ensure DOM is fully painted
+                    setTimeout(() => {
+                        showBookingDetail(bookingId).catch(err => {
+                            console.error('Error showing booking detail:', err);
+                            showToast('ไม่สามารถเปิดรายละเอียดการจองได้', 'error');
+                        });
+                    }, 100);
+                } else if (attempt < 10) {
+                    // Retry up to 10 times (10 seconds)
+                    console.log(`Waiting for LIFF to initialize... attempt ${attempt + 1}`);
+                    setTimeout(() => attemptShowDetail(attempt + 1), 1000);
+                } else {
+                    console.error('Failed to show booking detail after multiple attempts');
+                    showToast('ไม่สามารถเปิดรายละเอียดการจองได้ โปรดลองอีกครั้ง', 'error');
+                }
+            };
+            
+            attemptShowDetail();
         }
 
         window.selectDate = async function(dateStr) {
@@ -3445,13 +3471,15 @@
                     loadManagerData();
                 }
                 
-                // ตรวจสอบ URL parameter สำหรับเปิดรายละเอียดการจองโดยตรง
+                // Always check URL for bookingId after initialization
                 checkUrlForBookingId();
                 
             } catch (error) {
                 console.error('LIFF init error:', error);
                 $.initLoading.classList.add('hide');
                 if (!state.user) showToast('ไม่สามารถเชื่อมต่อ LINE ได้', 'error');
+                // Even if error, still try to open booking from URL if possible
+                checkUrlForBookingId();
             }
         }
 
@@ -4610,6 +4638,9 @@
                 `;
                 
                 footer.innerHTML = footerButtons;
+            } else {
+                showToast('ไม่พบข้อมูลการจอง', 'error');
+                closeBookingDetailModal();
             }
         };
 
